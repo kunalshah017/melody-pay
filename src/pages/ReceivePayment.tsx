@@ -6,6 +6,19 @@ import { ethers } from "ethers";
 
 type Step = "setup" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
 
+function normalizeKey(key: string): string {
+    const trimmed = key.trim();
+    return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
+
+function tryGetAddress(key: string): string {
+    try {
+        const normalized = normalizeKey(key);
+        if (normalized.length === 66) return getAddress(normalized);
+    } catch { /* invalid key */ }
+    return "";
+}
+
 export function ReceivePayment() {
     const [privateKey, setPrivateKey] = useState("");
     const [amount, setAmount] = useState("0.01");
@@ -14,7 +27,7 @@ export function ReceivePayment() {
     const [txHash, setTxHash] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
 
-    const walletAddress = privateKey.length === 66 ? getAddress(privateKey) : "";
+    const walletAddress = tryGetAddress(privateKey);
 
     async function handleRequestPayment() {
         if (!privateKey || !amount || !walletAddress) {
@@ -42,7 +55,9 @@ export function ReceivePayment() {
             // For hackathon simplicity: include nonce=0 as placeholder, sender will use it.
             // In production, there'd be a nonce exchange step.
 
-            const paymentRequest = `PAY|${walletAddress}|${amount}|0`;
+            const normalizedKey = normalizeKey(privateKey);
+            const addr = getAddress(normalizedKey);
+            const paymentRequest = `PAY|${addr}|${amount}|0`;
             setStatus(`📡 Broadcasting: "Send ${amount} MON to me" — hold sender's phone near...`);
 
             // Play on loop so sender has time to start listening

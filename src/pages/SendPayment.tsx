@@ -11,6 +11,19 @@ interface PaymentRequest {
     nonce: number;
 }
 
+function normalizeKey(key: string): string {
+    const trimmed = key.trim();
+    return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
+
+function tryGetAddress(key: string): string {
+    try {
+        const normalized = normalizeKey(key);
+        if (normalized.length === 66) return getAddress(normalized);
+    } catch { /* invalid key */ }
+    return "";
+}
+
 export function SendPayment() {
     const [privateKey, setPrivateKey] = useState("");
     const [step, setStep] = useState<Step>("setup");
@@ -18,7 +31,7 @@ export function SendPayment() {
     const [status, setStatus] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
 
-    const walletAddress = privateKey.length === 66 ? getAddress(privateKey) : "";
+    const walletAddress = tryGetAddress(privateKey);
 
     async function handleStartListening() {
         if (!privateKey || privateKey.length !== 66) {
@@ -65,7 +78,7 @@ export function SendPayment() {
                     value: paymentRequest.amount,
                     nonce: paymentRequest.nonce,
                 },
-                privateKey
+                normalizeKey(privateKey)
             );
 
             setStep("broadcasting");
