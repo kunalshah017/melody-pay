@@ -31,7 +31,8 @@ let genAI: GoogleGenAI | null = null;
 
 function getGenAI(apiKey?: string): GoogleGenAI {
   const key = apiKey || GEMINI_API_KEY;
-  if (!key) throw new Error("Gemini API key not set. Add VITE_GEMINI_API_KEY to .env");
+  if (!key)
+    throw new Error("Gemini API key not set. Add VITE_GEMINI_API_KEY to .env");
   if (!genAI) {
     genAI = new GoogleGenAI({ apiKey: key });
   }

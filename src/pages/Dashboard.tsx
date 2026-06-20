@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Send, Download, LogOut, Wallet, Activity } from "lucide-react";
+import { Send, Download, LogOut, Wallet, Activity, Coffee, User } from "lucide-react";
 import { ethers } from "ethers";
 
 export function Dashboard() {
@@ -98,6 +98,24 @@ export function Dashboard() {
                     </div>
                     <h2 className="text-xl font-serif font-bold text-app-dark mb-2">Receive Payment</h2>
                     <p className="text-sm font-sans text-app-dark/60 leading-relaxed">Listen for incoming audio payments and submit them to the Monad network.</p>
+                </Link>
+
+                <Link to="/agent/barista" className="group relative bg-white border border-app-border p-8 rounded-3xl overflow-hidden hover:border-app-dark hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-amber-100 to-transparent opacity-50 rounded-bl-[100px] -z-10 transition-transform group-hover:scale-110"></div>
+                    <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
+                        <Coffee size={28} />
+                    </div>
+                    <h2 className="text-xl font-serif font-bold text-app-dark mb-2">Barista Agent</h2>
+                    <p className="text-sm font-sans text-app-dark/60 leading-relaxed">AI barista that takes orders and receives payments via sound.</p>
+                </Link>
+
+                <Link to="/agent/customer" className="group relative bg-white border border-app-border p-8 rounded-3xl overflow-hidden hover:border-app-dark hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-purple-100 to-transparent opacity-50 rounded-bl-[100px] -z-10 transition-transform group-hover:scale-110"></div>
+                    <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-sm">
+                        <User size={28} />
+                    </div>
+                    <h2 className="text-xl font-serif font-bold text-app-dark mb-2">Customer Agent</h2>
+                    <p className="text-sm font-sans text-app-dark/60 leading-relaxed">AI customer that orders coffee and pays automatically via sound.</p>
                 </Link>
             </div>
         </motion.div>
