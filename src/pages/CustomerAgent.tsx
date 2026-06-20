@@ -240,11 +240,10 @@ export function CustomerAgent() {
 
                     <div className="max-h-80 overflow-y-auto space-y-2 p-2">
                         {messages.map((msg, i) => (
-                            <div key={i} className={`text-xs p-2 rounded-lg ${
-                                msg.role === "customer" ? "bg-blue-50 text-blue-900 ml-4" :
-                                msg.role === "barista" ? "bg-amber-50 text-amber-900 mr-4" :
-                                "bg-gray-50 text-gray-600 text-center italic"
-                            }`}>
+                            <div key={i} className={`text-xs p-2 rounded-lg ${msg.role === "customer" ? "bg-blue-50 text-blue-900 ml-4" :
+                                    msg.role === "barista" ? "bg-amber-50 text-amber-900 mr-4" :
+                                        "bg-gray-50 text-gray-600 text-center italic"
+                                }`}>
                                 {msg.role !== "system" && <span className="font-bold uppercase text-[10px] block mb-0.5">{msg.role}</span>}
                                 {msg.content}
                             </div>

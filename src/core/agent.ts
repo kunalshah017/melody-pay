@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+
 const BARISTA_SYSTEM = `You are a barista agent at "MelodyPay Café". You serve coffee via sound-based payments on Monad blockchain.
 
 Menu:
@@ -27,50 +29,55 @@ Rules:
 
 let genAI: GoogleGenAI | null = null;
 
-function getGenAI(apiKey: string): GoogleGenAI {
-    if (!genAI) {
-        genAI = new GoogleGenAI({ apiKey });
-    }
-    return genAI;
+function getGenAI(apiKey?: string): GoogleGenAI {
+  const key = apiKey || GEMINI_API_KEY;
+  if (!key) throw new Error("Gemini API key not set. Add VITE_GEMINI_API_KEY to .env");
+  if (!genAI) {
+    genAI = new GoogleGenAI({ apiKey: key });
+  }
+  return genAI;
 }
 
 export async function chatWithAgent(
-    apiKey: string,
-    role: "barista" | "customer",
-    conversationHistory: { role: string; content: string }[],
-    latestMessage?: string
+  apiKey: string | undefined,
+  role: "barista" | "customer",
+  conversationHistory: { role: string; content: string }[],
+  latestMessage?: string,
 ): Promise<string> {
-    const ai = getGenAI(apiKey);
+  const ai = getGenAI(apiKey);
 
-    const systemPrompt = role === "barista" ? BARISTA_SYSTEM : CUSTOMER_SYSTEM;
+  const systemPrompt = role === "barista" ? BARISTA_SYSTEM : CUSTOMER_SYSTEM;
 
-    // Build prompt with conversation history
-    let prompt = systemPrompt + "\n\nConversation so far:\n";
-    for (const msg of conversationHistory) {
-        prompt += `${msg.role}: ${msg.content}\n`;
-    }
-    if (latestMessage) {
-        prompt += `${role === "barista" ? "Customer" : "Barista"}: ${latestMessage}\n`;
-    }
-    prompt += `\n${role === "barista" ? "Barista" : "Customer"} (you):`;
+  // Build prompt with conversation history
+  let prompt = systemPrompt + "\n\nConversation so far:\n";
+  for (const msg of conversationHistory) {
+    prompt += `${msg.role}: ${msg.content}\n`;
+  }
+  if (latestMessage) {
+    prompt += `${role === "barista" ? "Customer" : "Barista"}: ${latestMessage}\n`;
+  }
+  prompt += `\n${role === "barista" ? "Barista" : "Customer"} (you):`;
 
-    const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-lite",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
+  const response = await ai.models.generateContent({
+    model: "gemini-2.0-flash-lite",
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+  });
 
-    return (response.text ?? "").trim();
+  return (response.text ?? "").trim();
 }
 
 export function extractTotal(message: string): string | null {
-    const match = message.match(/\[TOTAL:([\d.]+)\]/);
-    return match ? match[1] : null;
+  const match = message.match(/\[TOTAL:([\d.]+)\]/);
+  return match ? match[1] : null;
 }
 
 export function hasPaySignal(message: string): boolean {
-    return message.includes("[PAY]");
+  return message.includes("[PAY]");
 }
 
 export function cleanMessage(message: string): string {
-    return message.replace(/\[TOTAL:[\d.]+\]/, "").replace(/\[PAY\]/, "").trim();
+  return message
+    .replace(/\[TOTAL:[\d.]+\]/, "")
+    .replace(/\[PAY\]/, "")
+    .trim();
 }

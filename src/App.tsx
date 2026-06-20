@@ -14,7 +14,7 @@ function AudioLogo() {
     return (
         <div className="flex items-end gap-[3px] h-6">
             {[1, 2, 3, 4, 5].map(bar => (
-                <motion.div 
+                <motion.div
                     key={bar}
                     animate={{ height: ["20%", "100%", "40%", "80%", "20%"] }}
                     transition={{ repeat: Infinity, duration: 0.5 + Math.random(), ease: "easeInOut" }}
@@ -32,7 +32,7 @@ function Navbar() {
                 <AudioLogo />
                 <span className="text-xl font-semibold tracking-tight font-sans">MelodyPay</span>
             </Link>
-            
+
             <div className="hidden md:flex items-center gap-8 text-sm font-medium text-app-dark/60 font-sans">
                 <a href="/#features" className="hover:text-app-dark transition-colors flex items-center gap-2 group">
                     <span className="w-1.5 h-1.5 rounded-full bg-app-dark/0 group-hover:bg-app-dark/40 transition-colors"></span>
