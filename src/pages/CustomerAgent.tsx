@@ -13,7 +13,7 @@ interface Message {
 }
 
 export function CustomerAgent() {
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem("gemini_key") || "");
+    const [apiKey] = useState(() => import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem("gemini_key") || "");
     const [privateKey, setPrivateKey] = useState(() => localStorage.getItem("melodypay_pk") || "");
     const [started, setStarted] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -30,7 +30,7 @@ export function CustomerAgent() {
     }
 
     async function handleStart() {
-        if (!apiKey || !walletAddress) return;
+        if (!walletAddress) return;
         localStorage.setItem("gemini_key", apiKey);
         cancelledRef.current = false;
         setStarted(true);
@@ -212,20 +212,13 @@ export function CustomerAgent() {
                     <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl text-center">
                         <span className="font-medium text-sm text-blue-800">🤖 AI Customer — Orders & Pays via Sound</span>
                     </div>
-                    <input
-                        type="password"
-                        placeholder="Gemini API Key"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        className="w-full bg-[#FAFAFA] border border-app-border px-4 py-3 rounded-xl text-sm text-app-dark outline-none"
-                    />
                     <div className="bg-[#FAFAFA] border border-app-border p-3 rounded-xl text-center">
                         <p className="text-xs text-app-dark/50 uppercase tracking-wider mb-1">Wallet</p>
                         <p className="text-xs text-app-dark truncate">{walletAddress || "Set up in onboarding"}</p>
                     </div>
                     <button
                         onClick={handleStart}
-                        disabled={!apiKey || !walletAddress}
+                        disabled={!walletAddress}
                         className="w-full bg-[#1C1C1E] text-white py-4 rounded-xl text-sm font-medium hover:bg-black transition-colors flex items-center justify-center gap-2"
                     >
                         <Radio size={18} /> Start Customer Agent
@@ -241,8 +234,8 @@ export function CustomerAgent() {
                     <div className="max-h-80 overflow-y-auto space-y-2 p-2">
                         {messages.map((msg, i) => (
                             <div key={i} className={`text-xs p-2 rounded-lg ${msg.role === "customer" ? "bg-blue-50 text-blue-900 ml-4" :
-                                    msg.role === "barista" ? "bg-amber-50 text-amber-900 mr-4" :
-                                        "bg-gray-50 text-gray-600 text-center italic"
+                                msg.role === "barista" ? "bg-amber-50 text-amber-900 mr-4" :
+                                    "bg-gray-50 text-gray-600 text-center italic"
                                 }`}>
                                 {msg.role !== "system" && <span className="font-bold uppercase text-[10px] block mb-0.5">{msg.role}</span>}
                                 {msg.content}

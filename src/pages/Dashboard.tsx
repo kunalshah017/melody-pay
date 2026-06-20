@@ -33,7 +33,7 @@ export function Dashboard() {
     const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
     return (
-        <motion.div 
+        <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
@@ -48,7 +48,7 @@ export function Dashboard() {
                         <span className="text-sm font-medium tracking-wide">{truncateAddress(walletAddress)}</span>
                     </div>
                 </div>
-                <button 
+                <button
                     onClick={handleLogout}
                     className="p-3 bg-white border border-app-border rounded-xl text-app-dark/60 hover:text-red-500 hover:border-red-200 transition-colors shadow-sm"
                     title="Disconnect Wallet"
@@ -70,7 +70,7 @@ export function Dashboard() {
                 </div>
                 <div className="flex gap-1 h-4">
                     {[1, 2, 3].map(bar => (
-                        <motion.div 
+                        <motion.div
                             key={bar}
                             animate={{ height: ["40%", "100%", "60%", "90%", "40%"] }}
                             transition={{ repeat: Infinity, duration: 0.8 + Math.random(), ease: "easeInOut" }}
