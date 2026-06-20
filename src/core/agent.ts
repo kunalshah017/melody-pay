@@ -60,7 +60,12 @@ export async function chatWithAgent(
   prompt += `\n${role === "barista" ? "Barista" : "Customer"} (you):`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-lite",
+    model: "gemini-2.5-flash",
+    config: {
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
+    },
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 
