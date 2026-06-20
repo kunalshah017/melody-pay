@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { getAddress, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
-import { startListening } from "../core/listener";
+import { startChunkedListening } from "../core/listener";
 import { playLoop } from "../core/broadcaster";
 import { ethers } from "ethers";
 
@@ -58,45 +58,48 @@ export function ReceivePayment() {
         setStep("listening");
         setStatus("🎤 Listening for signed transaction from sender...");
 
-        const { stop } = await startListening(async (data) => {
-            if (!data.startsWith("0x")) return;
+        const { stop } = await startChunkedListening(
+            async (data) => {
+                if (!data.startsWith("0x")) return;
 
-            stop();
-            stopRef.current = null;
+                stop();
+                stopRef.current = null;
 
-            setStep("verifying");
-            setStatus("🔍 Received signed transaction, verifying...");
+                setStep("verifying");
+                setStatus("🔍 Received signed transaction, verifying...");
 
-            try {
-                const parsedTx = ethers.Transaction.from(data);
-                const expectedTo = walletAddress.toLowerCase();
-                const actualTo = parsedTx.to?.toLowerCase();
-                const actualValue = ethers.formatEther(parsedTx.value);
+                try {
+                    const parsedTx = ethers.Transaction.from(data);
+                    const expectedTo = walletAddress.toLowerCase();
+                    const actualTo = parsedTx.to?.toLowerCase();
+                    const actualValue = ethers.formatEther(parsedTx.value);
 
-                if (actualTo !== expectedTo) {
-                    setStatus(`❌ Tx recipient mismatch! Expected ${expectedTo.slice(0, 10)}... got ${actualTo?.slice(0, 10)}...`);
+                    if (actualTo !== expectedTo) {
+                        setStatus(`❌ Tx recipient mismatch! Expected ${expectedTo.slice(0, 10)}... got ${actualTo?.slice(0, 10)}...`);
+                        setStep("setup");
+                        return;
+                    }
+
+                    if (parseFloat(actualValue) < parseFloat(amount) * 0.99) {
+                        setStatus(`❌ Amount too low! Expected ${amount} MON, got ${actualValue} MON`);
+                        setStep("setup");
+                        return;
+                    }
+
+                    setStep("submitting");
+                    setStatus(`✅ Verified! Submitting ${actualValue} MON to Monad...`);
+
+                    const hash = await broadcastTransaction(data);
+                    setTxHash(hash);
+                    setStep("done");
+                    setStatus(`✅ Payment received! ${actualValue} MON confirmed.`);
+                } catch (err: any) {
+                    setStatus(`❌ Error: ${err.message}`);
                     setStep("setup");
-                    return;
                 }
-
-                if (parseFloat(actualValue) < parseFloat(amount) * 0.99) {
-                    setStatus(`❌ Amount too low! Expected ${amount} MON, got ${actualValue} MON`);
-                    setStep("setup");
-                    return;
-                }
-
-                setStep("submitting");
-                setStatus(`✅ Verified! Submitting ${actualValue} MON to Monad...`);
-
-                const hash = await broadcastTransaction(data);
-                setTxHash(hash);
-                setStep("done");
-                setStatus(`✅ Payment received! ${actualValue} MON confirmed.`);
-            } catch (err: any) {
-                setStatus(`❌ Error: ${err.message}`);
-                setStep("setup");
-            }
-        });
+            },
+            (statusMsg) => setStatus(statusMsg),
+        );
 
         stopRef.current = stop;
     }

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { signTransaction, getAddress } from "../core/tx-builder";
 import { startListening } from "../core/listener";
-import { playPayload } from "../core/broadcaster";
+import { playChunkedPayload } from "../core/broadcaster";
 
 type Step = "setup" | "listening" | "received" | "signing" | "signed" | "broadcasting" | "done";
 
@@ -95,9 +95,10 @@ export function SendPayment() {
 
         try {
             setStep("broadcasting");
-            setStatus(`🔊 Broadcasting signed tx (${signedTx.length} chars)...`);
+            const numChunks = Math.ceil(signedTx.length / 134);
+            setStatus(`🔊 Broadcasting signed tx in ${numChunks} chunk(s)...`);
 
-            await playPayload(signedTx);
+            await playChunkedPayload(signedTx);
 
             setStep("done");
             setStatus("✅ Signed transaction sent via sound! Receiver should pick it up.");
