@@ -21,7 +21,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,wasm}"],
+        globPatterns: ["**/*.{js,css,html,wasm,json,png,ico}"],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\./,
+            handler: "CacheFirst",
+          },
+        ],
       },
     }),
   ],
