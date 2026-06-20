@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import { getNonce, getAddress, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
+import { getAddress, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
 import { startListening } from "../core/listener";
-import { playPayload, playLoop } from "../core/broadcaster";
+import { playLoop } from "../core/broadcaster";
 import { ethers } from "ethers";
 
 type Step = "setup" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
@@ -29,7 +29,7 @@ export function ReceivePayment() {
 
     const walletAddress = tryGetAddress(privateKey);
 
-    async function handleRequestPayment() {
+    async function handleStartBroadcasting() {
         if (!privateKey || !amount || !walletAddress) {
             setStatus("❌ Enter your private key and amount");
             return;
@@ -37,54 +37,28 @@ export function ReceivePayment() {
 
         try {
             setStep("broadcasting");
-            setStatus("📡 Fetching nonce & broadcasting payment request...");
-
-            // Get current nonce for the sender to use
-            // We need the sender's nonce, but we don't know the sender's address yet.
-            // Strategy: We broadcast our address + amount. The sender will use their own nonce.
-            // Actually, we need to provide the nonce for the SENDER.
-            // Since we're the receiver, we don't know sender's nonce.
-            // But we DO need it for the signed tx to be valid.
-            // Solution: we ask sender to use nonce=0 or we broadcast without nonce
-            // and let sender fill in their own nonce.
-            // For the demo: broadcast "PAY|<receiverAddress>|<amount>|0"
-            // The sender's device knows their own nonce (they can hardcode or use 0 for demo)
-
-            // Better: We'll fetch nothing here. Just broadcast the request.
-            // The sender (air-gapped) will need their nonce pre-known or we include a "use your nonce" signal.
-            // For hackathon simplicity: include nonce=0 as placeholder, sender will use it.
-            // In production, there'd be a nonce exchange step.
 
             const normalizedKey = normalizeKey(privateKey);
             const addr = getAddress(normalizedKey);
             const paymentRequest = `PAY|${addr}|${amount}|0`;
-            setStatus(`📡 Broadcasting: "Send ${amount} MON to me" — hold sender's phone near...`);
+            setStatus(`📡 Broadcasting: "Send ${amount} MON to me"`);
 
-            // Play on loop so sender has time to start listening
             const { stop } = playLoop(paymentRequest, 3000);
             stopRef.current = stop;
-
-            // After broadcasting, we need to also start listening for the response
-            // Give 2 seconds for at least one broadcast, then start listening too
-            setTimeout(() => {
-                startListeningForSignedTx();
-            }, 6000);
         } catch (err: any) {
             setStatus(`❌ Error: ${err.message}`);
             setStep("setup");
         }
     }
 
-    async function startListeningForSignedTx() {
-        // Stop broadcasting
+    async function handleStartListening() {
         stopRef.current?.();
         stopRef.current = null;
 
         setStep("listening");
-        setStatus("🎤 Payment request sent! Now listening for signed transaction...");
+        setStatus("🎤 Listening for signed transaction from sender...");
 
         const { stop } = await startListening(async (data) => {
-            // Signed tx starts with 0x
             if (!data.startsWith("0x")) return;
 
             stop();
@@ -94,9 +68,7 @@ export function ReceivePayment() {
             setStatus("🔍 Received signed transaction, verifying...");
 
             try {
-                // Parse the signed transaction to verify it matches our request
                 const parsedTx = ethers.Transaction.from(data);
-
                 const expectedTo = walletAddress.toLowerCase();
                 const actualTo = parsedTx.to?.toLowerCase();
                 const actualValue = ethers.formatEther(parsedTx.value);
@@ -113,7 +85,6 @@ export function ReceivePayment() {
                     return;
                 }
 
-                // Verification passed — submit to Monad
                 setStep("submitting");
                 setStatus(`✅ Verified! Submitting ${actualValue} MON to Monad...`);
 
@@ -172,11 +143,11 @@ export function ReceivePayment() {
                         style={inputStyle}
                     />
                     <button
-                        onClick={handleRequestPayment}
-                        disabled={!privateKey || !amount}
+                        onClick={handleStartBroadcasting}
+                        disabled={!walletAddress || !amount}
                         style={{ ...btnStyle, background: "#16a34a" }}
                     >
-                        📡 Request Payment via Sound
+                        📡 Step 1: Broadcast Payment Request
                     </button>
                 </div>
             )}
@@ -186,8 +157,15 @@ export function ReceivePayment() {
                     <div style={{ fontSize: 48, margin: "20px 0" }}>📡</div>
                     <p>Broadcasting payment request...</p>
                     <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold sender's phone near this device
+                        Hold sender's phone near this device.
+                        <br />Once the sender has received it, tap below.
                     </p>
+                    <button
+                        onClick={handleStartListening}
+                        style={{ ...btnStyle, background: "#7c3aed", marginBottom: 8 }}
+                    >
+                        🎤 Step 2: Listen for Signed Tx
+                    </button>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>
@@ -198,6 +176,9 @@ export function ReceivePayment() {
                 <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
                     <p>Listening for signed transaction from sender...</p>
+                    <p style={{ fontSize: 12, color: "#888" }}>
+                        Hold this device near the sender's phone.
+                    </p>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>

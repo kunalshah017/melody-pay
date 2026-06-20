@@ -3,7 +3,7 @@ import { signTransaction, getAddress } from "../core/tx-builder";
 import { startListening } from "../core/listener";
 import { playPayload } from "../core/broadcaster";
 
-type Step = "setup" | "listening" | "received" | "signing" | "broadcasting" | "done";
+type Step = "setup" | "listening" | "received" | "signing" | "signed" | "broadcasting" | "done";
 
 interface PaymentRequest {
     to: string;
@@ -28,14 +28,15 @@ export function SendPayment() {
     const [privateKey, setPrivateKey] = useState("");
     const [step, setStep] = useState<Step>("setup");
     const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+    const [signedTx, setSignedTx] = useState("");
     const [status, setStatus] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
 
     const walletAddress = tryGetAddress(privateKey);
 
     async function handleStartListening() {
-        if (!privateKey || privateKey.length !== 66) {
-            setStatus("❌ Enter a valid private key (0x + 64 hex chars)");
+        if (!walletAddress) {
+            setStatus("❌ Enter a valid private key");
             return;
         }
 
@@ -43,7 +44,6 @@ export function SendPayment() {
         setStatus("🎤 Listening for payment request...");
 
         const { stop } = await startListening((data) => {
-            // Payment request format: "PAY|<to>|<amount>|<nonce>"
             if (!data.startsWith("PAY|")) return;
 
             const parts = data.split("|");
@@ -72,7 +72,7 @@ export function SendPayment() {
             setStep("signing");
             setStatus("✍️ Signing transaction...");
 
-            const signedTx = await signTransaction(
+            const tx = await signTransaction(
                 {
                     to: paymentRequest.to,
                     value: paymentRequest.amount,
@@ -81,17 +81,29 @@ export function SendPayment() {
                 normalizeKey(privateKey)
             );
 
+            setSignedTx(tx);
+            setStep("signed");
+            setStatus(`✅ Signed! (${tx.length} chars). Ready to broadcast.`);
+        } catch (err: any) {
+            setStatus(`❌ Error: ${err.message}`);
+            setStep("received");
+        }
+    }
+
+    async function handleBroadcast() {
+        if (!signedTx) return;
+
+        try {
             setStep("broadcasting");
             setStatus(`🔊 Broadcasting signed tx (${signedTx.length} chars)...`);
 
-            // Broadcast signed tx via ggwave for receiver to pick up
             await playPayload(signedTx);
 
             setStep("done");
             setStatus("✅ Signed transaction sent via sound! Receiver should pick it up.");
         } catch (err: any) {
             setStatus(`❌ Error: ${err.message}`);
-            setStep("received");
+            setStep("signed");
         }
     }
 
@@ -100,12 +112,14 @@ export function SendPayment() {
         stopRef.current = null;
         setStep("setup");
         setPaymentRequest(null);
+        setSignedTx("");
         setStatus("");
     }
 
     function handleReset() {
         setStep("setup");
         setPaymentRequest(null);
+        setSignedTx("");
         setStatus("");
     }
 
@@ -132,10 +146,10 @@ export function SendPayment() {
                     )}
                     <button
                         onClick={handleStartListening}
-                        disabled={!privateKey}
+                        disabled={!walletAddress}
                         style={{ ...btnStyle, background: "#dc2626" }}
                     >
-                        🎤 Listen for Payment Request
+                        🎤 Step 1: Listen for Payment Request
                     </button>
                 </div>
             )}
@@ -144,6 +158,9 @@ export function SendPayment() {
                 <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
                     <p>Waiting for receiver to broadcast payment details...</p>
+                    <p style={{ fontSize: 12, color: "#888" }}>
+                        Hold this device near the receiver's phone.
+                    </p>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>
@@ -165,7 +182,7 @@ export function SendPayment() {
                         </p>
                     </div>
                     <button onClick={handleConfirmAndSign} style={{ ...btnStyle, background: "#16a34a" }}>
-                        ✅ Confirm & Sign
+                        ✅ Step 2: Confirm & Sign
                     </button>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         ❌ Reject
@@ -173,11 +190,36 @@ export function SendPayment() {
                 </div>
             )}
 
-            {(step === "signing" || step === "broadcasting") && (
+            {step === "signing" && (
                 <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>
-                        {step === "signing" ? "✍️" : "🔊"}
-                    </div>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>✍️</div>
+                    <p>Signing transaction...</p>
+                </div>
+            )}
+
+            {step === "signed" && (
+                <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>✅</div>
+                    <p>Transaction signed!</p>
+                    <p style={{ fontSize: 12, color: "#888" }}>
+                        Hold this device near the receiver's phone, then tap below.
+                    </p>
+                    <button
+                        onClick={handleBroadcast}
+                        style={{ ...btnStyle, background: "#7c3aed", marginBottom: 8 }}
+                    >
+                        🔊 Step 3: Broadcast Signed Tx
+                    </button>
+                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
+                        Cancel
+                    </button>
+                </div>
+            )}
+
+            {step === "broadcasting" && (
+                <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>🔊</div>
+                    <p>Playing signed transaction via sound...</p>
                 </div>
             )}
 
