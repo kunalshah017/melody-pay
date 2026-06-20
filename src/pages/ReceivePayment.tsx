@@ -12,8 +12,12 @@ function normalizeKey(key: string): string {
 }
 
 function tryGetAddress(key: string): string {
+    const trimmed = key.trim();
+    // If it looks like an address (0x + 40 hex chars), use directly
+    if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) return trimmed;
+    // Otherwise try as private key
     try {
-        const normalized = normalizeKey(key);
+        const normalized = normalizeKey(trimmed);
         if (normalized.length === 66) return getAddress(normalized);
     } catch { /* invalid key */ }
     return "";
@@ -38,10 +42,8 @@ export function ReceivePayment() {
         try {
             setStep("broadcasting");
 
-            const normalizedKey = normalizeKey(privateKey);
-            const addr = getAddress(normalizedKey);
-            const paymentRequest = `PAY|${addr}|${amount}|0`;
-            setStatus(`📡 Broadcasting: "Send ${amount} MON to me"`);
+            const paymentRequest = `PAY|${walletAddress}|${amount}`;
+            setStatus(`📡 Broadcasting: "Send ${amount} MON to ${walletAddress.slice(0, 10)}..."`);
 
             const { stop } = playLoop(paymentRequest, 3000);
             stopRef.current = stop;
@@ -128,8 +130,7 @@ export function ReceivePayment() {
             {step === "setup" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <input
-                        type="password"
-                        placeholder="Your private key (to derive address)"
+                        placeholder="Your address (0x...) or private key"
                         value={privateKey}
                         onChange={(e) => setPrivateKey(e.target.value)}
                         style={inputStyle}

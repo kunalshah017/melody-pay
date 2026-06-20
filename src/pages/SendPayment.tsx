@@ -26,6 +26,7 @@ function tryGetAddress(key: string): string {
 
 export function SendPayment() {
     const [privateKey, setPrivateKey] = useState("");
+    const [nonce, setNonce] = useState("0");
     const [step, setStep] = useState<Step>("setup");
     const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
     const [signedTx, setSignedTx] = useState("");
@@ -47,12 +48,12 @@ export function SendPayment() {
             if (!data.startsWith("PAY|")) return;
 
             const parts = data.split("|");
-            if (parts.length !== 4) return;
+            if (parts.length < 3) return;
 
             const request: PaymentRequest = {
                 to: parts[1],
                 amount: parts[2],
-                nonce: parseInt(parts[3]),
+                nonce: parseInt(nonce), // Use sender's own nonce, not from request
             };
 
             setPaymentRequest(request);
@@ -145,6 +146,12 @@ export function SendPayment() {
                             Your address: {walletAddress}
                         </p>
                     )}
+                    <input
+                        placeholder="Your nonce (check explorer before going offline)"
+                        value={nonce}
+                        onChange={(e) => setNonce(e.target.value)}
+                        style={inputStyle}
+                    />
                     <button
                         onClick={handleStartListening}
                         disabled={!walletAddress}
@@ -179,7 +186,7 @@ export function SendPayment() {
                             <strong>Amount:</strong> {paymentRequest.amount} MON
                         </p>
                         <p style={{ margin: 4, fontSize: 13 }}>
-                            <strong>Nonce:</strong> {paymentRequest.nonce}
+                            <strong>Your Nonce:</strong> {paymentRequest.nonce}
                         </p>
                     </div>
                     <button onClick={handleConfirmAndSign} style={{ ...btnStyle, background: "#16a34a" }}>
