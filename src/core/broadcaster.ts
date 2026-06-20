@@ -5,10 +5,10 @@ import { encode, initGGWave, SAMPLE_RATE } from "./ggwave";
  */
 export async function playPayload(
   payload: string,
-  protocol?: number,
+  protocolName?: string,
 ): Promise<void> {
   await initGGWave();
-  const samples = encode(payload, protocol);
+  const samples = encode(payload, protocolName);
   const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
   const buffer = audioCtx.createBuffer(1, samples.length, SAMPLE_RATE);
   buffer.getChannelData(0).set(samples);
@@ -32,12 +32,12 @@ export async function playPayload(
 export function playLoop(
   payload: string,
   intervalMs: number = 5000,
-  protocol?: number,
+  protocolName?: string,
 ): { stop: () => void } {
   let running = true;
   const loop = async () => {
     while (running) {
-      await playPayload(payload, protocol);
+      await playPayload(payload, protocolName);
       await new Promise((r) => setTimeout(r, intervalMs));
     }
   };
