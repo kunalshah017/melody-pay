@@ -1,2 +1,4 @@
-.vercel
-dist/
+node_modules
+dist
+.env
+.vite
