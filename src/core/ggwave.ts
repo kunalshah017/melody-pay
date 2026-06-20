@@ -14,6 +14,7 @@
 
 let ggwaveModule: any = null;
 let ggwaveInstance: any = null;
+let initPromise: Promise<void> | null = null;
 
 const SAMPLE_RATE = 48000;
 const MAX_PAYLOAD_BYTES = 140;
@@ -28,20 +29,28 @@ function getProtocol(name: string): any {
 }
 
 export async function initGGWave(): Promise<void> {
-  if (ggwaveInstance) return;
+  // ggwaveInstance can be 0 (valid instance ID), so check for null explicitly
+  if (ggwaveInstance !== null) return;
 
-  const ggwaveFactory = (window as any).ggwave_factory;
-  if (!ggwaveFactory) {
-    throw new Error(
-      "ggwave not loaded. Make sure ggwave.js is included in index.html",
-    );
-  }
+  // Prevent concurrent initialization
+  if (initPromise) return initPromise;
 
-  ggwaveModule = await ggwaveFactory();
-  const parameters = ggwaveModule.getDefaultParameters();
-  parameters.sampleRateInp = SAMPLE_RATE;
-  parameters.sampleRateOut = SAMPLE_RATE;
-  ggwaveInstance = ggwaveModule.init(parameters);
+  initPromise = (async () => {
+    const ggwaveFactory = (window as any).ggwave_factory;
+    if (!ggwaveFactory) {
+      throw new Error(
+        "ggwave not loaded. Make sure ggwave.js is included in index.html",
+      );
+    }
+
+    ggwaveModule = await ggwaveFactory();
+    const parameters = ggwaveModule.getDefaultParameters();
+    parameters.sampleRateInp = SAMPLE_RATE;
+    parameters.sampleRateOut = SAMPLE_RATE;
+    ggwaveInstance = ggwaveModule.init(parameters);
+  })();
+
+  return initPromise;
 }
 
 export function isInitialized(): boolean {
@@ -59,7 +68,7 @@ export function encode(
   protocolName: string = "GGWAVE_PROTOCOL_AUDIBLE_FASTEST",
   volume: number = 10,
 ): Float32Array {
-  if (!ggwaveInstance) throw new Error("Call initGGWave() first");
+  if (ggwaveInstance === null) throw new Error("Call initGGWave() first");
 
   if (payload.length > MAX_PAYLOAD_BYTES) {
     console.warn(
@@ -87,7 +96,7 @@ export function encode(
  * Returns the decoded string if data found, null otherwise.
  */
 export function decode(samples: Float32Array): string | null {
-  if (!ggwaveInstance) throw new Error("Call initGGWave() first");
+  if (ggwaveInstance === null) throw new Error("Call initGGWave() first");
 
   // Reinterpret Float32Array bytes as Int8Array (same buffer, different view)
   const buffer = new ArrayBuffer(samples.byteLength);
