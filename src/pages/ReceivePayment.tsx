@@ -1,11 +1,10 @@
 import { useState, useRef } from "react";
 import { getAddress, getNonce, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
-import { startListening } from "../core/listener";
-import { startChunkedListening } from "../core/listener";
-import { playLoop } from "../core/broadcaster";
+import { startListening, startChunkedListening } from "../core/listener";
+import { playPayload } from "../core/broadcaster";
 import { ethers } from "ethers";
 
-type Step = "setup" | "waiting-sender" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
+type Step = "setup" | "waiting-sender" | "fetching-nonce" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
 
 function normalizeKey(key: string): string {
     const trimmed = key.trim();
@@ -29,7 +28,7 @@ export function ReceivePayment() {
     const [status, setStatus] = useState("");
     const [txHash, setTxHash] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
-    const stopRef2 = useRef<(() => void) | null>(null);
+    const cancelledRef = useRef(false);
 
     const walletAddress = tryGetAddress(privateKey);
 
@@ -39,12 +38,15 @@ export function ReceivePayment() {
             return;
         }
 
+        cancelledRef.current = false;
+
         try {
             setStep("waiting-sender");
-            setStatus("🎤 Waiting for sender to identify themselves...");
+            setStatus("🎤 Waiting for sender's address...");
 
-            // Step 1: Listen for sender's address (ADDR|0x...)
+            // Phase 1: Listen for sender's address
             const { stop } = await startListening(async (data) => {
+                if (cancelledRef.current) return;
                 if (!data.startsWith("ADDR|")) return;
 
                 const senderAddr = data.split("|")[1];
@@ -52,20 +54,86 @@ export function ReceivePayment() {
 
                 stop();
                 stopRef.current = null;
+                if (cancelledRef.current) return;
 
-                setStatus(`📡 Sender: ${senderAddr.slice(0, 10)}... — fetching nonce...`);
+                // Phase 2: Fetch nonce
+                setStep("fetching-nonce");
+                setStatus(`Got sender: ${senderAddr.slice(0, 10)}... Fetching nonce...`);
 
-                // Fetch sender's nonce from chain
                 try {
                     const senderNonce = await getNonce(senderAddr);
-                    setStatus(`📡 Broadcasting payment request (nonce: ${senderNonce})...`);
-                    setStep("broadcasting");
+                    if (cancelledRef.current) return;
 
-                    // Broadcast payment request WITH the correct nonce
+                    // Phase 3: Broadcast payment request 3 times with gaps
+                    setStep("broadcasting");
                     const paymentRequest = `PAY|${walletAddress}|${amount}|${senderNonce}`;
-                    const loop = playLoop(paymentRequest, 3000);
-                    stopRef.current = loop.stop;
+
+                    for (let i = 1; i <= 3; i++) {
+                        if (cancelledRef.current) return;
+                        setStatus(`📡 Broadcasting payment request (${i}/3)...`);
+                        await playPayload(paymentRequest);
+                        if (cancelledRef.current) return;
+                        await new Promise((r) => setTimeout(r, i < 3 ? 1000 : 1500));
+                    }
+
+                    if (cancelledRef.current) return;
+
+                    // Phase 4: Auto-switch to listening for signed tx
+                    setStep("listening");
+                    setStatus("🎤 Listening for signed transaction...");
+
+                    const { stop: stopChunked } = await startChunkedListening(
+                        async (txData) => {
+                            if (cancelledRef.current) return;
+                            if (!txData.startsWith("0x")) return;
+
+                            stopChunked();
+                            if (cancelledRef.current) return;
+
+                            setStep("verifying");
+                            setStatus("🔍 Verifying transaction...");
+
+                            try {
+                                const parsedTx = ethers.Transaction.from(txData);
+                                const expectedTo = walletAddress.toLowerCase();
+                                const actualTo = parsedTx.to?.toLowerCase();
+                                const actualValue = ethers.formatEther(parsedTx.value);
+
+                                if (actualTo !== expectedTo) {
+                                    setStatus(`❌ Recipient mismatch!`);
+                                    setStep("setup");
+                                    return;
+                                }
+
+                                if (parseFloat(actualValue) < parseFloat(amount) * 0.99) {
+                                    setStatus(`❌ Amount too low! Expected ${amount}, got ${actualValue}`);
+                                    setStep("setup");
+                                    return;
+                                }
+
+                                if (cancelledRef.current) return;
+                                setStep("submitting");
+                                setStatus(`✅ Verified! Submitting to Monad...`);
+
+                                const hash = await broadcastTransaction(txData);
+                                if (cancelledRef.current) return;
+                                setTxHash(hash);
+                                setStep("done");
+                                setStatus(`✅ Payment received! ${actualValue} MON`);
+                            } catch (err: any) {
+                                if (cancelledRef.current) return;
+                                setStatus(`❌ Error: ${err.message}`);
+                                setStep("setup");
+                            }
+                        },
+                        (msg) => {
+                            if (!cancelledRef.current) setStatus(msg);
+                        },
+                    );
+
+                    stopRef.current = stopChunked;
                 } catch (err: any) {
+                    if (cancelledRef.current) return;
                     setStatus(`❌ Failed to fetch nonce: ${err.message}`);
                     setStep("setup");
                 }
@@ -73,76 +141,23 @@ export function ReceivePayment() {
 
             stopRef.current = stop;
         } catch (err: any) {
+            if (cancelledRef.current) return;
             setStatus(`❌ Error: ${err.message}`);
             setStep("setup");
         }
     }
 
-    async function handleStartListening() {
-        // Stop broadcasting
-        stopRef.current?.();
-        stopRef.current = null;
-
-        setStep("listening");
-        setStatus("🎤 Listening for signed transaction from sender...");
-
-        const { stop } = await startChunkedListening(
-            async (data) => {
-                if (!data.startsWith("0x")) return;
-
-                stop();
-                stopRef2.current = null;
-
-                setStep("verifying");
-                setStatus("🔍 Received signed transaction, verifying...");
-
-                try {
-                    const parsedTx = ethers.Transaction.from(data);
-                    const expectedTo = walletAddress.toLowerCase();
-                    const actualTo = parsedTx.to?.toLowerCase();
-                    const actualValue = ethers.formatEther(parsedTx.value);
-
-                    if (actualTo !== expectedTo) {
-                        setStatus(`❌ Tx recipient mismatch! Expected ${expectedTo.slice(0, 10)}... got ${actualTo?.slice(0, 10)}...`);
-                        setStep("setup");
-                        return;
-                    }
-
-                    if (parseFloat(actualValue) < parseFloat(amount) * 0.99) {
-                        setStatus(`❌ Amount too low! Expected ${amount} MON, got ${actualValue} MON`);
-                        setStep("setup");
-                        return;
-                    }
-
-                    setStep("submitting");
-                    setStatus(`✅ Verified! Submitting ${actualValue} MON to Monad...`);
-
-                    const hash = await broadcastTransaction(data);
-                    setTxHash(hash);
-                    setStep("done");
-                    setStatus(`✅ Payment received! ${actualValue} MON confirmed.`);
-                } catch (err: any) {
-                    setStatus(`❌ Error: ${err.message}`);
-                    setStep("setup");
-                }
-            },
-            (statusMsg) => setStatus(statusMsg),
-        );
-
-        stopRef2.current = stop;
-    }
-
     function handleCancel() {
+        cancelledRef.current = true;
         stopRef.current?.();
         stopRef.current = null;
-        stopRef2.current?.();
-        stopRef2.current = null;
         setStep("setup");
         setStatus("");
         setTxHash("");
     }
 
     function handleReset() {
+        cancelledRef.current = true;
         setStep("setup");
         setStatus("");
         setTxHash("");
@@ -152,7 +167,7 @@ export function ReceivePayment() {
         <div style={{ padding: 20, fontFamily: "system-ui", maxWidth: 400, margin: "0 auto" }}>
             <h2>🌐 Receive Payment (Online)</h2>
             <p style={{ color: "#16a34a", fontSize: 12, marginBottom: 16 }}>
-                ✓ This device needs internet to fetch nonce & submit tx to Monad.
+                ✓ This device needs internet. Fully automatic after start.
             </p>
 
             {step === "setup" && (
@@ -179,64 +194,34 @@ export function ReceivePayment() {
                         disabled={!walletAddress || !amount}
                         style={{ ...btnStyle, background: "#16a34a" }}
                     >
-                        📡 Step 1: Start (listen for sender)
+                        🎤 Start (fully automatic)
                     </button>
                 </div>
             )}
 
-            {step === "waiting-sender" && (
+            {step !== "setup" && step !== "done" && (
                 <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
-                    <p>Waiting for sender to broadcast their address...</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Tell the sender to tap "Send Payment" on their device.
-                    </p>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>
+                        {step === "waiting-sender" && "🎤"}
+                        {step === "fetching-nonce" && "⏳"}
+                        {step === "broadcasting" && "📡"}
+                        {step === "listening" && "🎤"}
+                        {step === "verifying" && "🔍"}
+                        {step === "submitting" && "⛓️"}
+                    </div>
+                    <div style={{ background: "#1a1a1a", padding: 12, borderRadius: 8, margin: "12px 0" }}>
+                        <p style={{ fontSize: 11, color: "#888", margin: 0 }}>
+                            {step === "waiting-sender" && "Phase 1: Listening for sender's address"}
+                            {step === "fetching-nonce" && "Phase 2: Fetching sender's nonce from chain"}
+                            {step === "broadcasting" && "Phase 3: Broadcasting payment request to sender"}
+                            {step === "listening" && "Phase 4: Listening for signed transaction"}
+                            {step === "verifying" && "Phase 5: Verifying transaction"}
+                            {step === "submitting" && "Phase 6: Submitting to Monad"}
+                        </p>
+                    </div>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>
-                </div>
-            )}
-
-            {step === "broadcasting" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>📡</div>
-                    <p>Broadcasting payment request with nonce...</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Sender should hear this. Once they've received it, tap below.
-                    </p>
-                    <button
-                        onClick={handleStartListening}
-                        style={{ ...btnStyle, background: "#7c3aed", marginBottom: 8 }}
-                    >
-                        🎤 Step 2: Listen for Signed Tx
-                    </button>
-                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
-                        Cancel
-                    </button>
-                </div>
-            )}
-
-            {step === "listening" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
-                    <p>Listening for signed transaction from sender...</p>
-                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
-                        Cancel
-                    </button>
-                </div>
-            )}
-
-            {step === "verifying" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>🔍</div>
-                    <p>Verifying transaction...</p>
-                </div>
-            )}
-
-            {step === "submitting" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>⛓️</div>
-                    <p>Submitting to Monad...</p>
                 </div>
             )}
 

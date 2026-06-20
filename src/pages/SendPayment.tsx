@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
 import { signTransaction, getAddress } from "../core/tx-builder";
 import { startListening } from "../core/listener";
-import { playPayload, playChunkedPayload, playLoop } from "../core/broadcaster";
+import { playPayload, playChunkedPayload } from "../core/broadcaster";
 
-type Step = "setup" | "announcing" | "listening" | "received" | "signing" | "signed" | "broadcasting" | "done";
+type Step = "setup" | "announcing" | "listening" | "received" | "signing" | "broadcasting" | "done";
 
 interface PaymentRequest {
     to: string;
@@ -28,9 +28,9 @@ export function SendPayment() {
     const [privateKey, setPrivateKey] = useState("");
     const [step, setStep] = useState<Step>("setup");
     const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
-    const [signedTx, setSignedTx] = useState("");
     const [status, setStatus] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
+    const cancelledRef = useRef(false);
 
     const walletAddress = tryGetAddress(privateKey);
 
@@ -40,29 +40,28 @@ export function SendPayment() {
             return;
         }
 
+        cancelledRef.current = false;
+
+        // Phase 1: Broadcast address 3 times with gaps
         setStep("announcing");
-        setStatus("📡 Broadcasting your address to receiver...");
-
-        // Broadcast address on loop so receiver has time to hear it
         const addrMsg = `ADDR|${walletAddress}`;
-        const { stop: stopLoop } = playLoop(addrMsg, 2500);
-        stopRef.current = stopLoop;
 
-        // After a few broadcasts, also start listening for payment request
-        setTimeout(() => {
-            startListeningForRequest();
-        }, 5000);
-    }
+        for (let i = 1; i <= 3; i++) {
+            if (cancelledRef.current) return;
+            setStatus(`📡 Broadcasting your address (${i}/3)...`);
+            await playPayload(addrMsg);
+            if (cancelledRef.current) return;
+            await new Promise((r) => setTimeout(r, i < 3 ? 1000 : 1500));
+        }
 
-    async function startListeningForRequest() {
-        // Stop broadcasting address
-        stopRef.current?.();
-        stopRef.current = null;
+        if (cancelledRef.current) return;
 
+        // Phase 2: Listen for payment request
         setStep("listening");
-        setStatus("🎤 Address sent! Listening for payment request...");
+        setStatus("🎤 Listening for payment request from receiver...");
 
-        const { stop } = await startListening((data) => {
+        const { stop } = await startListening(async (data) => {
+            if (cancelledRef.current) return;
             if (!data.startsWith("PAY|")) return;
 
             const parts = data.split("|");
@@ -74,73 +73,62 @@ export function SendPayment() {
                 nonce: parseInt(parts[3]),
             };
 
-            // Stop broadcasting address
-            stopRef.current?.();
-            stopRef.current = null;
             stop();
+            stopRef.current = null;
+            if (cancelledRef.current) return;
 
             setPaymentRequest(request);
             setStep("received");
-            setStatus(`💰 Payment request: ${request.amount} MON → ${request.to.slice(0, 10)}... (nonce: ${request.nonce})`);
+            setStatus(`💰 Received: Send ${request.amount} MON → ${request.to.slice(0, 10)}...`);
+
+            // Auto-sign
+            try {
+                if (cancelledRef.current) return;
+                setStep("signing");
+                setStatus("✍️ Auto-signing transaction...");
+
+                const signedTx = await signTransaction(
+                    { to: request.to, value: request.amount, nonce: request.nonce },
+                    normalizeKey(privateKey)
+                );
+
+                if (cancelledRef.current) return;
+                setStatus("⏳ Waiting for receiver to be ready...");
+                await new Promise((r) => setTimeout(r, 2000));
+
+                if (cancelledRef.current) return;
+                setStep("broadcasting");
+                const numChunks = Math.ceil(signedTx.length / 134);
+                setStatus(`🔊 Broadcasting signed tx (${numChunks} chunks)...`);
+
+                await playChunkedPayload(signedTx);
+
+                if (cancelledRef.current) return;
+                setStep("done");
+                setStatus("✅ Done! Signed tx sent via sound.");
+            } catch (err: any) {
+                if (cancelledRef.current) return;
+                setStatus(`❌ Error: ${err.message}`);
+                setStep("setup");
+            }
         });
-    }
 
-    async function handleConfirmAndSign() {
-        if (!paymentRequest) return;
-
-        try {
-            setStep("signing");
-            setStatus("✍️ Signing transaction...");
-
-            const tx = await signTransaction(
-                {
-                    to: paymentRequest.to,
-                    value: paymentRequest.amount,
-                    nonce: paymentRequest.nonce,
-                },
-                normalizeKey(privateKey)
-            );
-
-            setSignedTx(tx);
-            setStep("signed");
-            setStatus(`✅ Signed! (${tx.length} chars). Ready to broadcast.`);
-        } catch (err: any) {
-            setStatus(`❌ Error: ${err.message}`);
-            setStep("received");
-        }
-    }
-
-    async function handleBroadcast() {
-        if (!signedTx) return;
-
-        try {
-            setStep("broadcasting");
-            const numChunks = Math.ceil(signedTx.length / 134);
-            setStatus(`🔊 Broadcasting signed tx in ${numChunks} chunk(s)...`);
-
-            await playChunkedPayload(signedTx);
-
-            setStep("done");
-            setStatus("✅ Signed transaction sent via sound! Receiver should pick it up.");
-        } catch (err: any) {
-            setStatus(`❌ Error: ${err.message}`);
-            setStep("signed");
-        }
+        stopRef.current = stop;
     }
 
     function handleCancel() {
+        cancelledRef.current = true;
         stopRef.current?.();
         stopRef.current = null;
         setStep("setup");
         setPaymentRequest(null);
-        setSignedTx("");
         setStatus("");
     }
 
     function handleReset() {
+        cancelledRef.current = true;
         setStep("setup");
         setPaymentRequest(null);
-        setSignedTx("");
         setStatus("");
     }
 
@@ -148,7 +136,7 @@ export function SendPayment() {
         <div style={{ padding: 20, fontFamily: "system-ui", maxWidth: 400, margin: "0 auto" }}>
             <h2>🔒 Send Payment (Air-Gapped)</h2>
             <p style={{ color: "#dc2626", fontSize: 12, marginBottom: 16 }}>
-                ⚠️ This device does NOT need internet. Keys never leave this device.
+                ⚠️ This device does NOT need internet. Fully automatic after start.
             </p>
 
             {step === "setup" && (
@@ -170,90 +158,32 @@ export function SendPayment() {
                         disabled={!walletAddress}
                         style={{ ...btnStyle, background: "#dc2626" }}
                     >
-                        🔊 Step 1: Start (announce & listen)
+                        🔊 Start (fully automatic)
                     </button>
                 </div>
             )}
 
-            {step === "announcing" && (
+            {step !== "setup" && step !== "done" && (
                 <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>📡</div>
-                    <p>Broadcasting your address to receiver...</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold near the receiver's device.
-                    </p>
-                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
-                        Cancel
-                    </button>
-                </div>
-            )}
-
-            {step === "listening" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
-                    <p>Address sent! Listening for payment request...</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Receiver is fetching your nonce & preparing the request.
-                    </p>
-                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
-                        Cancel
-                    </button>
-                </div>
-            )}
-
-            {step === "received" && paymentRequest && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ background: "#1a1a1a", padding: 16, borderRadius: 12, border: "1px solid #333" }}>
-                        <h3 style={{ margin: "0 0 8px", fontSize: 14, color: "#888" }}>Payment Request</h3>
-                        <p style={{ margin: 4, fontSize: 13 }}>
-                            <strong>To:</strong> {paymentRequest.to.slice(0, 10)}...{paymentRequest.to.slice(-8)}
-                        </p>
-                        <p style={{ margin: 4, fontSize: 13 }}>
-                            <strong>Amount:</strong> {paymentRequest.amount} MON
-                        </p>
-                        <p style={{ margin: 4, fontSize: 13, color: "#888" }}>
-                            <strong>Nonce:</strong> {paymentRequest.nonce} (auto-fetched)
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>
+                        {step === "announcing" && "📡"}
+                        {step === "listening" && "🎤"}
+                        {step === "received" && "💰"}
+                        {step === "signing" && "✍️"}
+                        {step === "broadcasting" && "🔊"}
+                    </div>
+                    <div style={{ background: "#1a1a1a", padding: 12, borderRadius: 8, margin: "12px 0" }}>
+                        <p style={{ fontSize: 11, color: "#888", margin: 0 }}>
+                            {step === "announcing" && "Phase 1: Sending address to receiver"}
+                            {step === "listening" && "Phase 2: Waiting for payment request"}
+                            {step === "received" && "Payment request received"}
+                            {step === "signing" && "Phase 3: Signing transaction"}
+                            {step === "broadcasting" && "Phase 4: Sending signed tx to receiver"}
                         </p>
                     </div>
-                    <button onClick={handleConfirmAndSign} style={{ ...btnStyle, background: "#16a34a" }}>
-                        ✅ Step 2: Confirm & Sign
-                    </button>
-                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
-                        ❌ Reject
-                    </button>
-                </div>
-            )}
-
-            {step === "signing" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>✍️</div>
-                    <p>Signing transaction...</p>
-                </div>
-            )}
-
-            {step === "signed" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>✅</div>
-                    <p>Transaction signed!</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold near the receiver's device, then tap below.
-                    </p>
-                    <button
-                        onClick={handleBroadcast}
-                        style={{ ...btnStyle, background: "#7c3aed", marginBottom: 8 }}
-                    >
-                        🔊 Step 3: Broadcast Signed Tx
-                    </button>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>
-                </div>
-            )}
-
-            {step === "broadcasting" && (
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, margin: "20px 0" }}>🔊</div>
-                    <p>Playing signed transaction via sound...</p>
                 </div>
             )}
 
