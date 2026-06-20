@@ -1,54 +1,195 @@
-# 🎵 MelodyPay
+# MelodyPay
 
-> Sign transactions offline. Transmit via sound. Broadcast to Monad.
+> Sound-based crypto payments on the Monad testnet. Sign transactions completely offline and broadcast them over audio.
 
-## What is MelodyPay?
+MelodyPay is a PWA that enables air-gapped cryptocurrency transactions on the **Monad testnet** using [ggwave](https://github.com/ggerganov/ggwave) — an open-source data-over-sound library. The sender keeps their private key completely offline while the receiver (with internet access) handles broadcasting the final signed transaction to the chain.
 
-A PWA that uses [ggwave](https://github.com/ggerganov/ggwave) to transmit signed Monad transactions over sound waves. Works on any device with a browser — phones, laptops, tablets.
+**Live Demo:** [melody-pay.vercel.app](https://melody-pay.vercel.app)
 
-**No internet on the signing device. No QR codes. No NFC. Just sound.**
+---
 
-## Demos
+## How It Works
 
-### 🔒 Air-Gapped Wallet
-
-Sign a Monad transaction on an offline device → play via speaker → online device hears it → broadcasts to Monad in <1 second.
-
-### 📡 Sonic Airdrop
-
-Speakers at an event play signed transactions on loop. Phones nearby decode them and broadcast to claim tokens. Proof of physical presence.
-
-## How it Works
+MelodyPay splits the transaction flow across two roles — a **Sender** (offline) and a **Receiver** (online):
 
 ```
-Offline Device                    Online Device
-┌────────────┐   ♪ sound ♪   ┌────────────┐     ┌───────────┐
-│  Sign tx   │ ────────────▶ │   Decode   │ ──▶ │   Monad   │
-│ Play audio │               │  Broadcast │     │   Chain   │
-└────────────┘               └────────────┘     └───────────┘
+Sender (Air-Gapped)                Receiver (Online)
+   │                                  │
+   │  1. Broadcasts wallet address    │  Listening for sender...
+   │─────────────────────────────────▶│
+   │                                  │  2. Fetches nonce from Monad
+   │                                  │  3. Broadcasts PAY|addr|amount|nonce
+   │◀─────────────────────────────────│
+   │  4. Signs tx OFFLINE (no network)│
+   │  5. Broadcasts signed tx chunks  │
+   │─────────────────────────────────▶│
+   │                                  │  6. Reassembles chunks
+   │                                  │  7. Verifies + submits to Monad
+   │                                  │  8. Confirmed in <1 second
 ```
+
+**Key properties:**
+- The private key **never touches the internet**. All signing is done in-browser using only ethers.js.
+- Nonce is fetched automatically — sender doesn't need to know it.
+- Large signed transactions are split into chunks (TX1/N, TX2/N) to fit ggwave's 140-byte limit.
+- Built on Monad testnet (Chain ID `10143`) with ~400ms blocks and sub-second finality.
+
+---
+
+## AI Agent Mode (A2A)
+
+MelodyPay includes an **agent-to-agent** demo where two AI agents transact over sound:
+
+```
+Customer Agent                     Barista Agent
+   │                                  │  Listening...
+   │  "Hi, I'll have a latte"        │
+   │─────────────────────────────────▶│
+   │                                  │  Gemini LLM: "That'll be 1.2 MON"
+   │◀─────────────────────────────────│
+   │  LLM decides to pay             │
+   │  Broadcasts ADDR|0x...          │
+   │─────────────────────────────────▶│
+   │                                  │  Fetches nonce, broadcasts PAY
+   │◀─────────────────────────────────│
+   │  Signs & broadcasts signed tx   │
+   │─────────────────────────────────▶│
+   │                                  │  Submits to Monad ✅
+   │                                  │  "Enjoy your coffee!"
+   │◀─────────────────────────────────│
+```
+
+- **Barista Agent** — AI-powered barista that takes orders and receives MON payments
+- **Customer Agent** — AI customer that orders coffee and pays automatically
+- Both use **Google Gemini** (called directly from client) for conversation
+- Half-duplex turn-taking over ggwave — same sound protocol as manual payments
+
+---
 
 ## Tech Stack
 
-- **ggwave** — data-over-sound via WebAssembly
-- **ethers.js v6** — offline tx signing + broadcast
-- **React + Vite** — PWA frontend
-- **Monad testnet** — 400ms blocks, 800ms finality, near-zero gas
+| Layer | Technology |
+|---|---|
+| Framework | React 18 + TypeScript |
+| Build Tool | Vite 5 |
+| Routing | React Router v6 |
+| Animation | Framer Motion 12, GSAP 3 |
+| Styling | Tailwind CSS v3 |
+| Icons | Lucide React |
+| Audio Protocol | ggwave (WASM) |
+| Blockchain | ethers.js v6 → Monad Testnet |
+| AI / LLM | Google Gemini 2.5 Flash |
+| PWA | vite-plugin-pwa (offline support) |
 
-## Run Locally
+---
+
+## Project Structure
+
+```
+melody-pay/
+├── index.html               # Entry point — loads ggwave.js globally
+├── vite.config.ts           # Vite + PWA config
+├── tailwind.config.js       # Tailwind theme
+├── .env                     # VITE_GEMINI_API_KEY (not committed)
+├── public/
+│   ├── ggwave.js            # ggwave WASM library
+│   └── icons/               # PWA icons
+└── src/
+    ├── main.tsx             # React bootstrap
+    ├── App.tsx              # Router, Navbar, transitions
+    ├── components/          # UI components
+    │   ├── InstallPrompt.tsx  # PWA install banner
+    │   ├── Copy.tsx           # Animated text reveal
+    │   ├── GsapColorCycle.tsx # Color-cycling animation
+    │   └── TextSwap.tsx       # Word swap animation
+    ├── core/                # Core protocol logic
+    │   ├── ggwave.ts        # ggwave WASM wrapper (encode/decode)
+    │   ├── broadcaster.ts   # Speaker output (play, playLoop, playChunked)
+    │   ├── listener.ts      # Mic input (listen, chunkedListen)
+    │   ├── tx-builder.ts    # Monad tx signing & broadcasting
+    │   └── agent.ts         # Gemini LLM integration for A2A
+    └── pages/
+        ├── Home.tsx           # Landing page
+        ├── Onboarding.tsx     # Wallet setup
+        ├── Dashboard.tsx      # App hub
+        ├── SendPayment.tsx    # Sender: fully automatic offline flow
+        ├── ReceivePayment.tsx # Receiver: auto nonce + submit
+        ├── BaristaAgent.tsx   # AI barista agent
+        └── CustomerAgent.tsx  # AI customer agent
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- npm
+
+### Install & Run
 
 ```bash
+git clone https://github.com/kunalshah017/melody-pay.git
+cd melody-pay
 npm install
+```
+
+Create `.env`:
+```
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+Run:
+```bash
 npm run dev
 ```
 
-Open on two devices (or two browser tabs). One as Signer, one as Relay.
+Open at `http://localhost:5173`.
+
+### Build for Production
+
+```bash
+npm run build
+npm run preview
+```
+
+---
+
+## Audio Protocol
+
+| Message | Format | Direction |
+|---|---|---|
+| Sender address | `ADDR\|0xAbCd...` | Sender → Receiver |
+| Payment request | `PAY\|<to>\|<amount>\|<nonce>` | Receiver → Sender |
+| Signed tx chunk | `TX1/2\|<hex_data>` | Sender → Receiver |
+| Agent message | `MSG\|<text>` | Either → Either |
+
+- Max payload per ggwave burst: **140 bytes**
+- Protocol: `GGWAVE_PROTOCOL_AUDIBLE_FASTEST` (~2.3s for 53 chars)
+- Large signed transactions (~240 chars) split into 2 chunks
+
+---
+
+## Monad Testnet Config
+
+```
+Chain ID:     10143
+RPC:          https://testnet-rpc.monad.xyz
+Explorer:     https://testnet.monadscan.com
+Gas:          150 gwei maxFeePerGas (Monad charges on gas_limit)
+Block time:   ~400ms
+Finality:     ~800ms
+```
+
+---
 
 ## Why Monad?
 
-- **Sub-second finality (800ms)** — hear the sound, see the confirmation almost instantly
+- **Sub-second finality** — hear the sound, see confirmation almost instantly
 - **Near-zero gas** — micro-transactions via sound are practical
-- **10,000 TPS** — handles many simultaneous claims (sonic airdrop at scale)
+- **10,000 TPS** — handles many simultaneous sound-based payments
 - **Charges on gas_limit** — we hardcode 21000 for transfers, keeping costs minimal
 
-## Built for Monad Blitz Mumbai V3 — The Agent Economy
+---
+
+## Built for Monad Blitz Mumbai V3
