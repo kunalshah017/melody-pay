@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
 import { signTransaction, getAddress } from "../core/tx-builder";
 import { startListening } from "../core/listener";
-import { playChunkedPayload } from "../core/broadcaster";
+import { playPayload, playChunkedPayload, playLoop } from "../core/broadcaster";
 
-type Step = "setup" | "listening" | "received" | "signing" | "signed" | "broadcasting" | "done";
+type Step = "setup" | "announcing" | "listening" | "received" | "signing" | "signed" | "broadcasting" | "done";
 
 interface PaymentRequest {
     to: string;
@@ -26,7 +26,6 @@ function tryGetAddress(key: string): string {
 
 export function SendPayment() {
     const [privateKey, setPrivateKey] = useState("");
-    const [nonce, setNonce] = useState("0");
     const [step, setStep] = useState<Step>("setup");
     const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
     const [signedTx, setSignedTx] = useState("");
@@ -35,35 +34,52 @@ export function SendPayment() {
 
     const walletAddress = tryGetAddress(privateKey);
 
-    async function handleStartListening() {
+    async function handleStart() {
         if (!walletAddress) {
             setStatus("❌ Enter a valid private key");
             return;
         }
 
+        setStep("announcing");
+        setStatus("📡 Broadcasting your address to receiver...");
+
+        // Broadcast address on loop so receiver has time to hear it
+        const addrMsg = `ADDR|${walletAddress}`;
+        const { stop: stopLoop } = playLoop(addrMsg, 2500);
+        stopRef.current = stopLoop;
+
+        // After a few broadcasts, also start listening for payment request
+        setTimeout(() => {
+            startListeningForRequest();
+        }, 5000);
+    }
+
+    async function startListeningForRequest() {
+        // Keep broadcasting address but also start listening
         setStep("listening");
-        setStatus("🎤 Listening for payment request...");
+        setStatus("🎤 Address sent! Listening for payment request...");
 
         const { stop } = await startListening((data) => {
             if (!data.startsWith("PAY|")) return;
 
             const parts = data.split("|");
-            if (parts.length < 3) return;
+            if (parts.length !== 4) return;
 
             const request: PaymentRequest = {
                 to: parts[1],
                 amount: parts[2],
-                nonce: parseInt(nonce), // Use sender's own nonce, not from request
+                nonce: parseInt(parts[3]),
             };
+
+            // Stop broadcasting address
+            stopRef.current?.();
+            stopRef.current = null;
+            stop();
 
             setPaymentRequest(request);
             setStep("received");
-            setStatus(`💰 Payment request: ${request.amount} MON → ${request.to.slice(0, 10)}...`);
-            stop();
-            stopRef.current = null;
+            setStatus(`💰 Payment request: ${request.amount} MON → ${request.to.slice(0, 10)}... (nonce: ${request.nonce})`);
         });
-
-        stopRef.current = stop;
     }
 
     async function handleConfirmAndSign() {
@@ -146,18 +162,25 @@ export function SendPayment() {
                             Your address: {walletAddress}
                         </p>
                     )}
-                    <input
-                        placeholder="Your nonce (check explorer before going offline)"
-                        value={nonce}
-                        onChange={(e) => setNonce(e.target.value)}
-                        style={inputStyle}
-                    />
                     <button
-                        onClick={handleStartListening}
+                        onClick={handleStart}
                         disabled={!walletAddress}
                         style={{ ...btnStyle, background: "#dc2626" }}
                     >
-                        🎤 Step 1: Listen for Payment Request
+                        🔊 Step 1: Start (announce & listen)
+                    </button>
+                </div>
+            )}
+
+            {step === "announcing" && (
+                <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>📡</div>
+                    <p>Broadcasting your address to receiver...</p>
+                    <p style={{ fontSize: 12, color: "#888" }}>
+                        Hold near the receiver's device.
+                    </p>
+                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
+                        Cancel
                     </button>
                 </div>
             )}
@@ -165,9 +188,9 @@ export function SendPayment() {
             {step === "listening" && (
                 <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
-                    <p>Waiting for receiver to broadcast payment details...</p>
+                    <p>Address sent! Listening for payment request...</p>
                     <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold this device near the receiver's phone.
+                        Receiver is fetching your nonce & preparing the request.
                     </p>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
@@ -185,8 +208,8 @@ export function SendPayment() {
                         <p style={{ margin: 4, fontSize: 13 }}>
                             <strong>Amount:</strong> {paymentRequest.amount} MON
                         </p>
-                        <p style={{ margin: 4, fontSize: 13 }}>
-                            <strong>Your Nonce:</strong> {paymentRequest.nonce}
+                        <p style={{ margin: 4, fontSize: 13, color: "#888" }}>
+                            <strong>Nonce:</strong> {paymentRequest.nonce} (auto-fetched)
                         </p>
                     </div>
                     <button onClick={handleConfirmAndSign} style={{ ...btnStyle, background: "#16a34a" }}>
@@ -210,7 +233,7 @@ export function SendPayment() {
                     <div style={{ fontSize: 48, margin: "20px 0" }}>✅</div>
                     <p>Transaction signed!</p>
                     <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold this device near the receiver's phone, then tap below.
+                        Hold near the receiver's device, then tap below.
                     </p>
                     <button
                         onClick={handleBroadcast}

@@ -21,9 +21,9 @@ export function Home() {
             <div style={{ marginTop: 32, padding: 16, background: "#1a1a1a", borderRadius: 12, border: "1px solid #333" }}>
                 <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>How it works</h4>
                 <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12, color: "#aaa", lineHeight: 1.8 }}>
-                    <li>Receiver enters amount & broadcasts payment request via sound</li>
-                    <li>Sender (air-gapped) hears request, reviews & signs offline</li>
-                    <li>Sender broadcasts signed transaction via sound</li>
+                    <li>Sender broadcasts their address via sound (fully offline)</li>
+                    <li>Receiver hears address, fetches nonce from Monad, broadcasts payment request</li>
+                    <li>Sender hears request with correct nonce, signs offline, broadcasts signed tx</li>
                     <li>Receiver hears signed tx, verifies & submits to Monad</li>
                 </ol>
             </div>

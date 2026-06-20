@@ -1,10 +1,11 @@
 import { useState, useRef } from "react";
-import { getAddress, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
+import { getAddress, getNonce, broadcastTransaction, MONAD_CONFIG } from "../core/tx-builder";
+import { startListening } from "../core/listener";
 import { startChunkedListening } from "../core/listener";
 import { playLoop } from "../core/broadcaster";
 import { ethers } from "ethers";
 
-type Step = "setup" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
+type Step = "setup" | "waiting-sender" | "broadcasting" | "listening" | "verifying" | "submitting" | "done";
 
 function normalizeKey(key: string): string {
     const trimmed = key.trim();
@@ -13,9 +14,7 @@ function normalizeKey(key: string): string {
 
 function tryGetAddress(key: string): string {
     const trimmed = key.trim();
-    // If it looks like an address (0x + 40 hex chars), use directly
     if (/^0x[0-9a-fA-F]{40}$/.test(trimmed)) return trimmed;
-    // Otherwise try as private key
     try {
         const normalized = normalizeKey(trimmed);
         if (normalized.length === 66) return getAddress(normalized);
@@ -30,22 +29,48 @@ export function ReceivePayment() {
     const [status, setStatus] = useState("");
     const [txHash, setTxHash] = useState("");
     const stopRef = useRef<(() => void) | null>(null);
+    const stopRef2 = useRef<(() => void) | null>(null);
 
     const walletAddress = tryGetAddress(privateKey);
 
-    async function handleStartBroadcasting() {
-        if (!privateKey || !amount || !walletAddress) {
-            setStatus("❌ Enter your private key and amount");
+    async function handleStart() {
+        if (!walletAddress || !amount) {
+            setStatus("❌ Enter your address and amount");
             return;
         }
 
         try {
-            setStep("broadcasting");
+            setStep("waiting-sender");
+            setStatus("🎤 Waiting for sender to identify themselves...");
 
-            const paymentRequest = `PAY|${walletAddress}|${amount}`;
-            setStatus(`📡 Broadcasting: "Send ${amount} MON to ${walletAddress.slice(0, 10)}..."`);
+            // Step 1: Listen for sender's address (ADDR|0x...)
+            const { stop } = await startListening(async (data) => {
+                if (!data.startsWith("ADDR|")) return;
 
-            const { stop } = playLoop(paymentRequest, 3000);
+                const senderAddr = data.split("|")[1];
+                if (!senderAddr || senderAddr.length !== 42) return;
+
+                stop();
+                stopRef.current = null;
+
+                setStatus(`📡 Sender: ${senderAddr.slice(0, 10)}... — fetching nonce...`);
+
+                // Fetch sender's nonce from chain
+                try {
+                    const senderNonce = await getNonce(senderAddr);
+                    setStatus(`📡 Broadcasting payment request (nonce: ${senderNonce})...`);
+                    setStep("broadcasting");
+
+                    // Broadcast payment request WITH the correct nonce
+                    const paymentRequest = `PAY|${walletAddress}|${amount}|${senderNonce}`;
+                    const loop = playLoop(paymentRequest, 3000);
+                    stopRef.current = loop.stop;
+                } catch (err: any) {
+                    setStatus(`❌ Failed to fetch nonce: ${err.message}`);
+                    setStep("setup");
+                }
+            });
+
             stopRef.current = stop;
         } catch (err: any) {
             setStatus(`❌ Error: ${err.message}`);
@@ -54,6 +79,7 @@ export function ReceivePayment() {
     }
 
     async function handleStartListening() {
+        // Stop broadcasting
         stopRef.current?.();
         stopRef.current = null;
 
@@ -65,7 +91,7 @@ export function ReceivePayment() {
                 if (!data.startsWith("0x")) return;
 
                 stop();
-                stopRef.current = null;
+                stopRef2.current = null;
 
                 setStep("verifying");
                 setStatus("🔍 Received signed transaction, verifying...");
@@ -103,12 +129,14 @@ export function ReceivePayment() {
             (statusMsg) => setStatus(statusMsg),
         );
 
-        stopRef.current = stop;
+        stopRef2.current = stop;
     }
 
     function handleCancel() {
         stopRef.current?.();
         stopRef.current = null;
+        stopRef2.current?.();
+        stopRef2.current = null;
         setStep("setup");
         setStatus("");
         setTxHash("");
@@ -124,7 +152,7 @@ export function ReceivePayment() {
         <div style={{ padding: 20, fontFamily: "system-ui", maxWidth: 400, margin: "0 auto" }}>
             <h2>🌐 Receive Payment (Online)</h2>
             <p style={{ color: "#16a34a", fontSize: 12, marginBottom: 16 }}>
-                ✓ This device needs internet to submit the transaction to Monad.
+                ✓ This device needs internet to fetch nonce & submit tx to Monad.
             </p>
 
             {step === "setup" && (
@@ -147,11 +175,24 @@ export function ReceivePayment() {
                         style={inputStyle}
                     />
                     <button
-                        onClick={handleStartBroadcasting}
+                        onClick={handleStart}
                         disabled={!walletAddress || !amount}
                         style={{ ...btnStyle, background: "#16a34a" }}
                     >
-                        📡 Step 1: Broadcast Payment Request
+                        📡 Step 1: Start (listen for sender)
+                    </button>
+                </div>
+            )}
+
+            {step === "waiting-sender" && (
+                <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
+                    <p>Waiting for sender to broadcast their address...</p>
+                    <p style={{ fontSize: 12, color: "#888" }}>
+                        Tell the sender to tap "Send Payment" on their device.
+                    </p>
+                    <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
+                        Cancel
                     </button>
                 </div>
             )}
@@ -159,10 +200,9 @@ export function ReceivePayment() {
             {step === "broadcasting" && (
                 <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 48, margin: "20px 0" }}>📡</div>
-                    <p>Broadcasting payment request...</p>
+                    <p>Broadcasting payment request with nonce...</p>
                     <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold sender's phone near this device.
-                        <br />Once the sender has received it, tap below.
+                        Sender should hear this. Once they've received it, tap below.
                     </p>
                     <button
                         onClick={handleStartListening}
@@ -180,9 +220,6 @@ export function ReceivePayment() {
                 <div style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 48, margin: "20px 0" }}>🎤</div>
                     <p>Listening for signed transaction from sender...</p>
-                    <p style={{ fontSize: 12, color: "#888" }}>
-                        Hold this device near the sender's phone.
-                    </p>
                     <button onClick={handleCancel} style={{ ...btnStyle, background: "#666" }}>
                         Cancel
                     </button>
