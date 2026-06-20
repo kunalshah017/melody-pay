@@ -5,6 +5,8 @@ import { SendPayment } from "./pages/SendPayment";
 import { ReceivePayment } from "./pages/ReceivePayment";
 import { Onboarding } from "./pages/Onboarding";
 import { Dashboard } from "./pages/Dashboard";
+import { BaristaAgent } from "./pages/BaristaAgent";
+import { CustomerAgent } from "./pages/CustomerAgent";
 import { Waves } from "lucide-react";
 import ReactLenis from "lenis/react";
 
@@ -90,6 +92,20 @@ function AnimatedRoutes() {
                     <ProtectedRoute>
                         <PageWrapper>
                             <ReceivePayment />
+                        </PageWrapper>
+                    </ProtectedRoute>
+                } />
+                <Route path="/agent/barista" element={
+                    <ProtectedRoute>
+                        <PageWrapper>
+                            <BaristaAgent />
+                        </PageWrapper>
+                    </ProtectedRoute>
+                } />
+                <Route path="/agent/customer" element={
+                    <ProtectedRoute>
+                        <PageWrapper>
+                            <CustomerAgent />
                         </PageWrapper>
                     </ProtectedRoute>
                 } />
