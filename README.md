@@ -1,13 +1,52 @@
-# Monad Blitz Mumbai Submission Process
+# 🎵 MelodyPay
 
-## Steps to prepare your project repo:
+> Sign transactions offline. Transmit via sound. Broadcast to Monad.
 
-1. Visit the `monad-blitz-mumbai` repo (link [here](https://github.com/monad-developers/monad-blitz-mumbai)) and fork it.
+## What is MelodyPay?
 
-![1.png](/screenshots/1.png)
+A PWA that uses [ggwave](https://github.com/ggerganov/ggwave) to transmit signed Monad transactions over sound waves. Works on any device with a browser — phones, laptops, tablets.
 
-2. Give it your project name, a one-liner description, make sure you are forking `main` branch and click `Create Fork`
+**No internet on the signing device. No QR codes. No NFC. Just sound.**
 
-![2.png](/screenshots/2.png)
+## Demos
 
-3. In your fork you can make all the changes you want, add code of your project, create branches, add information to `README.md` , you can change anything and everything.
+### 🔒 Air-Gapped Wallet
+Sign a Monad transaction on an offline device → play via speaker → online device hears it → broadcasts to Monad in <1 second.
+
+### 📡 Sonic Airdrop
+Speakers at an event play signed transactions on loop. Phones nearby decode them and broadcast to claim tokens. Proof of physical presence.
+
+## How it Works
+
+```
+Offline Device                    Online Device
+┌────────────┐   ♪ sound ♪   ┌────────────┐     ┌───────────┐
+│  Sign tx   │ ────────────▶ │   Decode   │ ──▶ │   Monad   │
+│ Play audio │               │  Broadcast │     │   Chain   │
+└────────────┘               └────────────┘     └───────────┘
+```
+
+## Tech Stack
+
+- **ggwave** — data-over-sound via WebAssembly
+- **ethers.js v6** — offline tx signing + broadcast
+- **React + Vite** — PWA frontend
+- **Monad testnet** — 400ms blocks, 800ms finality, near-zero gas
+
+## Run Locally
+
+```bash
+npm install
+npm run dev
+```
+
+Open on two devices (or two browser tabs). One as Signer, one as Relay.
+
+## Why Monad?
+
+- **Sub-second finality (800ms)** — hear the sound, see the confirmation almost instantly
+- **Near-zero gas** — micro-transactions via sound are practical
+- **10,000 TPS** — handles many simultaneous claims (sonic airdrop at scale)
+- **Charges on gas_limit** — we hardcode 21000 for transfers, keeping costs minimal
+
+## Built for Monad Blitz Mumbai V3 — The Agent Economy
