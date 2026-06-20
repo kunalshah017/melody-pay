@@ -55,7 +55,10 @@ export function SendPayment() {
     }
 
     async function startListeningForRequest() {
-        // Keep broadcasting address but also start listening
+        // Stop broadcasting address
+        stopRef.current?.();
+        stopRef.current = null;
+
         setStep("listening");
         setStatus("🎤 Address sent! Listening for payment request...");
 
