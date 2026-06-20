@@ -35,7 +35,7 @@ export async function initGGWave(): Promise<void> {
   const ggwaveFactory = (window as any).ggwave_factory;
   if (!ggwaveFactory) {
     throw new Error(
-      "ggwave not loaded. Make sure ggwave.js is included in index.html"
+      "ggwave not loaded. Make sure ggwave.js is included in index.html",
     );
   }
 
@@ -57,10 +57,15 @@ export function isInitialized(): boolean {
 export function encode(
   payload: string,
   protocol: number = Protocol.AUDIBLE_FAST,
-  volume: number = 10
+  volume: number = 10,
 ): Float32Array {
   if (!ggwaveInstance) throw new Error("Call initGGWave() first");
-  const waveform = ggwaveModule.encode(ggwaveInstance, payload, protocol, volume);
+  const waveform = ggwaveModule.encode(
+    ggwaveInstance,
+    payload,
+    protocol,
+    volume,
+  );
   // Convert to Float32Array for Web Audio API
   return convertToFloat32(waveform);
 }

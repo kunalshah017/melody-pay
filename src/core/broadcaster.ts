@@ -3,7 +3,10 @@ import { encode, initGGWave, SAMPLE_RATE } from "./ggwave";
 /**
  * Play a payload as ggwave audio through the device speaker.
  */
-export async function playPayload(payload: string, protocol?: number): Promise<void> {
+export async function playPayload(
+  payload: string,
+  protocol?: number,
+): Promise<void> {
   await initGGWave();
   const samples = encode(payload, protocol);
   const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -29,7 +32,7 @@ export async function playPayload(payload: string, protocol?: number): Promise<v
 export function playLoop(
   payload: string,
   intervalMs: number = 5000,
-  protocol?: number
+  protocol?: number,
 ): { stop: () => void } {
   let running = true;
   const loop = async () => {
@@ -39,5 +42,9 @@ export function playLoop(
     }
   };
   loop();
-  return { stop: () => { running = false; } };
+  return {
+    stop: () => {
+      running = false;
+    },
+  };
 }

@@ -36,7 +36,7 @@ export interface TxParams {
  */
 export async function signTransaction(
   params: TxParams,
-  privateKey: string
+  privateKey: string,
 ): Promise<string> {
   const wallet = new Wallet(privateKey);
 
@@ -50,7 +50,7 @@ export async function signTransaction(
     maxFeePerGas: ethers.parseUnits(params.maxFeePerGas || "1", "gwei"),
     maxPriorityFeePerGas: ethers.parseUnits(
       params.maxPriorityFeePerGas || "1",
-      "gwei"
+      "gwei",
     ),
     type: 2,
   };

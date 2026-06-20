@@ -6,7 +6,7 @@ export type OnDecodeCallback = (data: string) => void;
  * Start listening on the microphone for ggwave-encoded data.
  */
 export async function startListening(
-  onDecode: OnDecodeCallback
+  onDecode: OnDecodeCallback,
 ): Promise<{ stop: () => void }> {
   await initGGWave();
 

@@ -11,9 +11,11 @@ A PWA that uses [ggwave](https://github.com/ggerganov/ggwave) to transmit signed
 ## Demos
 
 ### 🔒 Air-Gapped Wallet
+
 Sign a Monad transaction on an offline device → play via speaker → online device hears it → broadcasts to Monad in <1 second.
 
 ### 📡 Sonic Airdrop
+
 Speakers at an event play signed transactions on loop. Phones nearby decode them and broadcast to claim tokens. Proof of physical presence.
 
 ## How it Works
