@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { BaristaAgent } from "./pages/BaristaAgent";
 import { CustomerAgent } from "./pages/CustomerAgent";
 import { Waves } from "lucide-react";
+import { InstallPrompt } from "./components/InstallPrompt";
 import ReactLenis from "lenis/react";
 
 function AudioLogo() {
@@ -135,6 +136,7 @@ export default function App() {
                 <div className="min-h-screen bg-app-bg text-app-dark relative overflow-hidden flex flex-col">
                     <Navbar />
                     <AnimatedRoutes />
+                    <InstallPrompt />
                 </div>
             </BrowserRouter>
         </ReactLenis>
