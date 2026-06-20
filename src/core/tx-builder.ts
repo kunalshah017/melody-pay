@@ -47,9 +47,10 @@ export async function signTransaction(
     nonce: params.nonce,
     // Hardcode 21000 for native transfers — Monad charges on gas_limit!
     gasLimit: params.gasLimit || 21000,
-    maxFeePerGas: ethers.parseUnits(params.maxFeePerGas || "1", "gwei"),
+    // Monad testnet base fee is ~100 gwei. Set maxFeePerGas high enough.
+    maxFeePerGas: ethers.parseUnits(params.maxFeePerGas || "150", "gwei"),
     maxPriorityFeePerGas: ethers.parseUnits(
-      params.maxPriorityFeePerGas || "1",
+      params.maxPriorityFeePerGas || "2",
       "gwei",
     ),
     type: 2,

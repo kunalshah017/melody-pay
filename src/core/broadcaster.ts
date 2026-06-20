@@ -62,7 +62,10 @@ export async function playChunkedPayload(
   const totalChunks = Math.ceil(payload.length / CHUNK_DATA_SIZE);
 
   for (let i = 0; i < totalChunks; i++) {
-    const chunkData = payload.slice(i * CHUNK_DATA_SIZE, (i + 1) * CHUNK_DATA_SIZE);
+    const chunkData = payload.slice(
+      i * CHUNK_DATA_SIZE,
+      (i + 1) * CHUNK_DATA_SIZE,
+    );
     const chunk = `TX${i + 1}/${totalChunks}|${chunkData}`;
     await playPayload(chunk, protocolName);
     if (i < totalChunks - 1) {
