@@ -46,11 +46,10 @@ export function CustomerAgent() {
         // Broadcast greeting
         setStatus("📡 Speaking...");
         await playPayload(`MSG|${clean}`);
-        await new Promise((r) => setTimeout(r, 1500));
 
         if (cancelledRef.current) return;
 
-        // Start listening for barista response
+        // Start listening immediately (no gap)
         listenForBarista();
     }
 

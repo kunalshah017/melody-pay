@@ -119,6 +119,11 @@ export function BaristaAgent() {
 
             addMessage({ role: "barista", content: clean + (total ? ` (${total} MON)` : "") });
 
+            // Wait for customer to be ready to listen
+            setStatus("⏳ Waiting for customer...");
+            await new Promise((r) => setTimeout(r, 2000));
+            if (cancelledRef.current) return;
+
             // Broadcast response
             setStatus("📡 Speaking...");
             await playPayload(`MSG|${clean}`);
