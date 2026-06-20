@@ -126,12 +126,6 @@ export function BaristaAgent() {
 
             if (cancelledRef.current) return;
 
-            // If total was stated, broadcast it separately too
-            if (total) {
-                await playPayload(`TOTAL|${total}`);
-                await new Promise((r) => setTimeout(r, 1000));
-            }
-
             // Go back to listening
             if (!cancelledRef.current) listenForCustomer();
         });

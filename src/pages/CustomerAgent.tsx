@@ -107,40 +107,6 @@ export function CustomerAgent() {
                 return;
             }
 
-            // Handle TOTAL message
-            if (data.startsWith("TOTAL|")) {
-                // Barista stated total, customer should initiate payment
-                stop();
-                stopRef.current = null;
-                if (cancelledRef.current) return;
-
-                // Customer confirms payment via LLM
-                setStatus("🤖 Deciding...");
-                const response = await chatWithAgent(apiKey, "customer", conversationRef.current, "The barista told me the total. I should pay now.");
-                const clean = cleanMessage(response);
-                addMessage({ role: "customer", content: clean });
-
-                // Broadcast confirm + address
-                setStatus("📡 Confirming & sending address...");
-                await playPayload(`MSG|${clean}`);
-                await new Promise((r) => setTimeout(r, 1000));
-
-                // Broadcast address for payment
-                const addrMsg = `ADDR|${walletAddress}`;
-                for (let i = 0; i < 3; i++) {
-                    if (cancelledRef.current) return;
-                    await playPayload(addrMsg);
-                    await new Promise((r) => setTimeout(r, 1000));
-                }
-
-                if (cancelledRef.current) return;
-
-                // Now listen for PAY request from barista
-                setStatus("🎤 Waiting for payment request...");
-                listenForBarista();
-                return;
-            }
-
             // Handle conversation message
             if (!data.startsWith("MSG|")) return;
             const baristaMsg = data.slice(4);
@@ -159,16 +125,9 @@ export function CustomerAgent() {
 
             addMessage({ role: "customer", content: clean });
 
-            // Broadcast response
-            setStatus("📡 Speaking...");
-            await playPayload(`MSG|${clean}`);
-            await new Promise((r) => setTimeout(r, 1500));
-
-            if (cancelledRef.current) return;
-
             if (wantsToPay) {
-                // Customer wants to pay — broadcast address
-                setStatus("📡 Sending wallet address...");
+                // Customer wants to pay — skip MSG, go straight to ADDR
+                setStatus("📡 Sending wallet address for payment...");
                 const addrMsg = `ADDR|${walletAddress}`;
                 for (let i = 0; i < 3; i++) {
                     if (cancelledRef.current) return;
@@ -176,7 +135,19 @@ export function CustomerAgent() {
                     await new Promise((r) => setTimeout(r, 1000));
                 }
                 if (cancelledRef.current) return;
+
+                // Now listen for PAY request from barista
+                setStatus("🎤 Waiting for payment request...");
+                listenForBarista();
+                return;
             }
+
+            // Broadcast response (only for non-payment messages)
+            setStatus("📡 Speaking...");
+            await playPayload(`MSG|${clean}`);
+            await new Promise((r) => setTimeout(r, 1500));
+
+            if (cancelledRef.current) return;
 
             // Continue listening
             listenForBarista();
